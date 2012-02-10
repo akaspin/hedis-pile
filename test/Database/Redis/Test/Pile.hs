@@ -27,12 +27,12 @@ caseNewData = bracket_
     setup
     teardown
     $ runInRedis $ do
-        r <- RP.pile (allPrefix "two") Nothing $ 
+        r <- RP.pile allPrefix "two" Nothing $ 
             return (allData, Nothing, Nothing)
         liftIO $ Just allData @=? r
-        void $ RP.pile (allPrefix "three") Nothing $ 
-            return (allData, Just 15, Just ("piletest:", ["one"]))
-        ex <- R.ttl (allPrefix "three")
+        void $ RP.pile allPrefix "three" Nothing $ 
+            return (allData, Just 15, Just ["one"])
+        ex <- R.ttl $ allPrefix `B.append` ":three"
         liftIO $ Right 15 @=? ex
 
 caseStoredData :: Assertion
@@ -40,10 +40,10 @@ caseStoredData = bracket_
     setup
     teardown
     $ runInRedis $ do
-        r <- RP.pile (allPrefix "one") Nothing $ 
+        r <- RP.pile allPrefix "one" Nothing $ 
             return (allData, Nothing, Nothing)
         liftIO $ Just allData @=? r
-        r' <- RP.pile (allPrefix "one") (Just ("etag", "etag")) $ 
+        r' <- RP.pile allPrefix "one" (Just ("etag", "etag")) $ 
             return (allData, Nothing, Nothing)
         liftIO $ Nothing @=? r'
 
@@ -59,12 +59,12 @@ setup = runInRedis $
 -- | Purge all keys with 'allPrefix'
 teardown :: IO ()
 teardown = runInRedis $ do
-    a <- R.keys $ allPrefix "*"
+    a <- R.keys $ allPrefix `B.append` "*"
     _ <- either undefined R.del a
     return ()
     
-allPrefix :: B.ByteString -> B.ByteString
-allPrefix = B.append "piletest:"
+allPrefix :: B.ByteString
+allPrefix = "piletest"
 
 allData :: [(B.ByteString, B.ByteString)]
 allData = [("etag", "etag"), ("anydata", "anydata")]

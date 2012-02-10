@@ -1,3 +1,5 @@
+{-# LANGUAGE OverloadedStrings #-} 
+
 -- | Solution for caching mandatory data with Redis.
 --   
 --   In many cases, requires not just pick up or put the data into the cache.
@@ -23,8 +25,9 @@ import qualified Database.Redis.Tags as RT
 --   if data absent in cache. Of course, to refresh the data, they must first 
 --   remove from the cache.
 --   
---   Computation controls all that will be stored in the cache. To do this, 
---   except the results of computation, it may return optional @TTL@ in 
+--   Computation controls all that will be stored in the cache except two 
+--   things: key and prefix for keys and tags. To do this, 
+--   with the results of computation, it may return optional @TTL@ in 
 --   seconds (Redis convention) and tags for key. About tags see 
 --   "Database.Redis.Tags".
 --   
@@ -35,55 +38,58 @@ import qualified Database.Redis.Tags as RT
 -- > conn <- connect defaultConnectInfo
 -- > runRedis conn $ do
 -- >    -- do it
--- >    r <- pile "mykey" (Just ("etag", "etag")) $  
+-- >    r <- pile "myprefix" "mykey" (Just ("etag", "etag")) $  
 -- >        return ([("etag", "etag"), ("val", "myval")], Nothing, Nothing)
 -- >    liftIO $ print r
 -- >    -- Just [("etag", "etag"), ("val", "myval")]
 -- >    
 -- >    -- once again
--- >    r <- pile "mykey" (Just ("etag", "etag")) $  
+-- >    r <- pile "myprefix" "mykey" (Just ("etag", "etag")) $  
 -- >        return ([("etag", "etag"), ("val", "myval")], Nothing, Nothing)
 -- >    liftIO $ print r
 -- >    -- Nothing
 -- >    
 -- >    -- and again without expect
--- >    r <- pile "mykey" Nothing $  
+-- >    r <- pile "myprefix" "mykey" Nothing $  
 -- >        return ([("etag", "etag"), ("val", "myval")], Nothing, Nothing)
 -- >    liftIO $ print r
 -- >    -- Just [("etag", "etag"), ("val", "myval")]
 pile :: 
-       B.ByteString        
-            -- ^ Key in cache.
+       B.ByteString
+            -- ^ Prefix for key and tags.
+    -> B.ByteString        
+            -- ^ Key in cache. Key will be stored as @prefix:key@
     -> Maybe (B.ByteString, B.ByteString)
             -- ^ Optional expect field.
     -> IO ([(B.ByteString, B.ByteString)], 
            Maybe Integer, 
-           Maybe (B.ByteString, [B.ByteString]))
+           Maybe [B.ByteString])
             -- ^ Computation that returns data and 
-            --   optional TTL and tags.
+            --   optional TTL and tags. All tags will be stored as @prefix:tag@.
     -> R.Redis (Maybe [(B.ByteString, B.ByteString)])
-pile key (Just (ef, ev)) f = do
-    e <- R.hget key ef
+pile p key (Just (ef, ev)) f = do
+    e <- R.hget (p `B.append` ":" `B.append` key) ef
     case e of
         Right (Just ev') | ev' == ev -> return Nothing
-                         | otherwise -> pile key Nothing f
-        _ -> pile key Nothing f
-pile key Nothing f = do
-    d <- R.hgetall key
+                         | otherwise -> pile p key Nothing f
+        _ -> pile p key Nothing f
+pile p key Nothing f = do
+    d <- R.hgetall withPrefix
     case d of
         Right [] -> runF
         Right r -> return $ Just r
         _ -> runF
   where
+    withPrefix = p `B.append` ":" `B.append` key
     runF = do
         (r, ke, t) <- liftIO f
-        void $ R.hmset key r
+        void $ R.hmset withPrefix r
         setExpire ke
         setTags t
         return $ Just r
       where
         setExpire Nothing = return ()
-        setExpire (Just ke) = void $ R.expire key ke
+        setExpire (Just ke) = void $ R.expire withPrefix ke
         setTags Nothing = return ()
-        setTags (Just (p, ts)) = RT.markTags [key] p ts
+        setTags (Just ts) = RT.markTags [withPrefix] p ts
         
