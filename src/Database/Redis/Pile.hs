@@ -39,19 +39,19 @@ import qualified Database.Redis.Tags as RT
 -- > runRedis conn $ do
 -- >    -- do it
 -- >    r <- pile "myprefix" "mykey" (Just ("etag", "etag")) $  
--- >        return ([("etag", "etag"), ("val", "myval")], Nothing, Nothing)
+-- >        return ([("etag", "etag"), ("val", "myval")], Nothing, [])
 -- >    liftIO $ print r
 -- >    -- Just [("etag", "etag"), ("val", "myval")]
 -- >    
 -- >    -- once again
 -- >    r <- pile "myprefix" "mykey" (Just ("etag", "etag")) $  
--- >        return ([("etag", "etag"), ("val", "myval")], Nothing, Nothing)
+-- >        return ([("etag", "etag"), ("val", "myval")], Nothing, [])
 -- >    liftIO $ print r
 -- >    -- Nothing
 -- >    
 -- >    -- and again without expect
 -- >    r <- pile "myprefix" "mykey" Nothing $  
--- >        return ([("etag", "etag"), ("val", "myval")], Nothing, Nothing)
+-- >        return ([("etag", "etag"), ("val", "myval")], Nothing, [])
 -- >    liftIO $ print r
 -- >    -- Just [("etag", "etag"), ("val", "myval")]
 pile :: 
