@@ -27,10 +27,10 @@ caseNewData = bracket_
     setup
     teardown
     $ runInRedis $ do
-        r <- RP.pile allPrefix "two" Nothing $ 
+        r <- RP.pile allPrefix "two" Nothing Nothing $ 
             return (allData, Nothing, [])
         liftIO $ Just allData @=? r
-        void $ RP.pile allPrefix "three" Nothing $ 
+        void $ RP.pile allPrefix "three" Nothing Nothing $ 
             return (allData, Just 15, ["one"])
         ex <- R.ttl $ allPrefix `B.append` ":three"
         liftIO $ Right 15 @=? ex
@@ -40,10 +40,10 @@ caseStoredData = bracket_
     setup
     teardown
     $ runInRedis $ do
-        r <- RP.pile allPrefix "one" Nothing $ 
+        r <- RP.pile allPrefix "one" Nothing Nothing $ 
             return (allData, Nothing, [])
         liftIO $ Just allData @=? r
-        r' <- RP.pile allPrefix "one" (Just ("etag", "etag")) $ 
+        r' <- RP.pile allPrefix "one" (Just ("etag", "etag")) Nothing $ 
             return (allData, Nothing, [])
         liftIO $ Nothing @=? r'
 
