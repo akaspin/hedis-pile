@@ -63,7 +63,7 @@ pile ::
             -- ^ Optional expect field.
     -> IO ([(B.ByteString, B.ByteString)], 
            Maybe Integer, 
-           Maybe [B.ByteString])
+           [B.ByteString])
             -- ^ Computation that returns data and 
             --   optional TTL and tags. All tags will be stored as @prefix:tag@.
     -> R.Redis (Maybe [(B.ByteString, B.ByteString)])
@@ -85,11 +85,9 @@ pile p key Nothing f = do
         (r, ke, t) <- liftIO f
         void $ R.hmset withPrefix r
         setExpire ke
-        setTags t
+        RT.markTags [withPrefix] p t
         return $ Just r
       where
         setExpire Nothing = return ()
         setExpire (Just ke) = void $ R.expire withPrefix ke
-        setTags Nothing = return ()
-        setTags (Just ts) = RT.markTags [withPrefix] p ts
         
