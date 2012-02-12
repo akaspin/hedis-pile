@@ -34,6 +34,12 @@ caseNewData = bracket_
             return (allData, Just 15, ["one"])
         ex <- R.ttl $ allPrefix `B.append` ":three"
         liftIO $ Right 15 @=? ex
+        r' <- RP.pile allPrefix "three" Nothing (Just "anydata") $ 
+            return (allData, Nothing, [])
+        liftIO $ Just [("anydata", "anydata")] @=? r'
+        r'' <- RP.pile allPrefix "three" Nothing (Just "anydata") $ 
+            return (allData, Nothing, [])
+        liftIO $ Just [("anydata", "anydata")] @=? r''
 
 caseStoredData :: Assertion
 caseStoredData = bracket_

@@ -20,6 +20,7 @@ import Control.Monad (void)
 
 import qualified Database.Redis as R
 import qualified Database.Redis.Tags as RT
+import Data.Maybe (fromJust)
 
 -- | Stores computation results in Redis as hashSet. Computation fires only  
 --   if data absent in cache. Of course, to refresh the data, they must first 
@@ -108,7 +109,9 @@ pile p key Nothing payload f = do
         void $ R.hmset withPrefix r
         setExpire ke
         RT.markTags [withPrefix] p t
-        return $ Just r
+        return $ case payload of
+            Nothing -> Just r
+            Just pl -> Just [(pl, fromJust $ lookup pl r)]
       where
         setExpire Nothing = return ()
         setExpire (Just ke) = void $ R.expire withPrefix ke
