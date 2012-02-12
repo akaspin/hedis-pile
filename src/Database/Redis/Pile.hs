@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings #-} 
+{-# LANGUAGE OverloadedStrings, RankNTypes #-} 
 
 -- | Solution for caching mandatory data with Redis.
 --   
@@ -15,7 +15,7 @@ module Database.Redis.Pile (
 
 import qualified Data.ByteString as B
 
-import Control.Monad.IO.Class (liftIO)
+import Control.Monad.IO.Class (liftIO, MonadIO)
 import Control.Monad (void)
 
 import qualified Database.Redis as R
@@ -73,9 +73,9 @@ pile ::
             --   request data from the cache from @O(N)@ to @O(1)@.
             --   Regardless of setting this field, all data from computation
             --   will stored in cache.
-    -> IO ([(B.ByteString, B.ByteString)], 
+    -> (forall m . MonadIO m => m ([(B.ByteString, B.ByteString)], 
            Maybe Integer, 
-           [B.ByteString])
+           [B.ByteString]))
             -- ^ Computation that returns data and 
             --   optional TTL and tags. All tags will be stored as @prefix:tag@.
     -> R.Redis (Maybe [(B.ByteString, B.ByteString)])
