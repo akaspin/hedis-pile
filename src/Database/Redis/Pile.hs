@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, RankNTypes #-} 
+{-# LANGUAGE OverloadedStrings, RankNTypes, TypeFamilies #-} 
 
 -- | Solution for caching mandatory data with Redis.
 --   
@@ -15,7 +15,7 @@ module Database.Redis.Pile (
 
 import qualified Data.ByteString as B
 
-import Control.Monad.IO.Class (liftIO, MonadIO)
+import Control.Monad.IO.Class (MonadIO)
 import Control.Monad (void)
 
 import qualified Database.Redis as R
@@ -61,7 +61,7 @@ import Data.Maybe (fromJust)
 --   * @O(1)@ If expect matches.
 --
 --   * @O(2)@ If payload field provided
-pile :: 
+pile :: forall ma . (MonadIO ma, ma ~ R.Redis) => 
        B.ByteString
             -- ^ Prefix for key and tags.
     -> B.ByteString        
@@ -73,12 +73,12 @@ pile ::
             --   request data from the cache from @O(N)@ to @O(1)@.
             --   Regardless of setting this field, all data from computation
             --   will stored in cache.
-    -> (forall m . MonadIO m => m ([(B.ByteString, B.ByteString)], 
+    -> (forall mb . MonadIO mb => mb ([(B.ByteString, B.ByteString)], 
            Maybe Integer, 
            [B.ByteString]))
             -- ^ Computation that returns data and 
             --   optional TTL and tags. All tags will be stored as @prefix:tag@.
-    -> R.Redis (Maybe [(B.ByteString, B.ByteString)])
+    -> ma (Maybe [(B.ByteString, B.ByteString)])
 pile p key (Just (ef, ev)) payload f = do
     e <- R.hget (p `B.append` ":" `B.append` key) ef
     case e of
@@ -105,7 +105,7 @@ pile p key Nothing payload f = do
     
     withPrefix = p `B.append` ":" `B.append` key
     runF = do
-        (r, ke, t) <- liftIO f
+        (r, ke, t) <- f
         void $ R.hmset withPrefix r
         setExpire ke
         RT.markTags [withPrefix] p t
