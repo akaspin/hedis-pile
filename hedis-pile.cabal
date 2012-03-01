@@ -1,5 +1,5 @@
 name:           hedis-pile
-version:        0.4.0
+version:        0.4.1
 cabal-version:  >= 1.8
 build-type:     Simple
 stability:      Experimental
@@ -43,7 +43,7 @@ test-suite test
                    
                    -- from lib
                    bytestring >= 0.9 && < 0.10,
-                   hedis >= 0.3 && < 0.4,
+                   hedis >= 0.3 && < 0.5,
  
                    lifted-base,
                    transformers >= 0.2 && < 0.3
