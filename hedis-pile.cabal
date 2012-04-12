@@ -21,9 +21,11 @@ library
   build-depends:   
                    base >= 4 && < 5,
                    bytestring >= 0.9 && < 0.10,
+                   binary,
                    hedis >= 0.4 && < 0.5,
                    hedis-tags >= 0.1,
-                   transformers >= 0.2 && < 0.3
+                   string-conversions,
+                   transformers >= 0.2 && < 0.4
   ghc-options:     -Wall
   exposed-modules: Database.Redis.Pile
 
@@ -47,10 +49,9 @@ test-suite test
  
                    binary,
                    lifted-base,
-                   transformers >= 0.2 && < 0.3
+                   string-conversions,
+                   transformers >= 0.2 && < 0.4
   ghc-options:     -Wall -rtsopts -threaded
   main-is:         Main.hs
-  other-modules:   
-                   Database.Redis.Test.Pile,
-                   Database.Redis.Test.PileBinary
+  other-modules:   Database.Redis.Test.Pile
 

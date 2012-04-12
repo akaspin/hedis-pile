@@ -1,4 +1,6 @@
-{-# LANGUAGE OverloadedStrings, RankNTypes, TypeFamilies #-} 
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE TypeFamilies #-}
 
 -- | Solution for caching mandatory data with Redis.
 --   
@@ -9,110 +11,88 @@
 --   put value to cache ... Tedious
 --   
 --   Solution is quite simple - collapse all of these steps in one operation.
+
 module Database.Redis.Pile (
+    
     pile
 ) where
-
-import qualified Data.ByteString as B
 
 import Control.Monad.IO.Class (MonadIO)
 import Control.Monad (void)
 
-import qualified Database.Redis as R
-import qualified Database.Redis.Tags as RT
+import qualified Data.ByteString as B
+import Data.Binary (Binary(..), encode, decode)
+import Data.String.Conversions ((<>), cs)
 import Data.Maybe (fromJust)
 
--- | Stores computation results in Redis as hashSet. Computation fires only  
+import qualified Database.Redis as R
+import qualified Database.Redis.Tags as RT
+
+-- | Stores computation results in Redis. Computation fires only  
 --   if data absent in cache. Of course, to refresh the data, they must first 
 --   remove from the cache.
 --   
---   Computation controls all that will be stored in the cache except two 
---   things: key and prefix for keys and tags. To do this, 
---   with the results of computation, it may return optional @TTL@ in 
---   seconds (Redis convention) and tags for key. About tags see 
---   "Database.Redis.Tags".
+--   Computation controls everything except prefix and key.
+--
+--   In background data is stored in Redis as HashSet with two fields: @d@ 
+--   for serialized data and @e@ for expect field.
+--
+--   Time complexity depends on the situation. 
 --   
---   Instead get all data from cache, optional parameter allows simply make 
---   sure that cache holds HashSet with needed field with needed value. If this 
---   is so, 'pile' return 'Nothing'. 
---
--- > conn <- connect defaultConnectInfo
--- > runRedis conn $ do
--- >    -- do it
--- >    r <- pile "myprefix" "mykey" (Just ("etag", "etag")) Nothing $  
--- >        return ([("etag", "etag"), ("val", "myval")], Nothing, [])
--- >    liftIO $ print r
--- >    -- Just [("etag", "etag"), ("val", "myval")]
--- >    
--- >    -- once again
--- >    r <- pile "myprefix" "mykey" (Just ("etag", "etag")) Nothing $  
--- >        return ([("etag", "etag"), ("val", "myval")], Nothing, [])
--- >    liftIO $ print r
--- >    -- Nothing
--- >    
--- >    -- and again without expect
--- >    r <- pile "myprefix" "mykey" Nothing Nothing $  
--- >        return ([("etag", "etag"), ("val", "myval")], Nothing, [])
--- >    liftIO $ print r
--- >    -- Just [("etag", "etag"), ("val", "myval")]
---
---   Time complexity for cached data:
+--   * @O(1)@ if data exists in cache and expect matches. 
 --   
---   * @O(1)@ If expect matches.
---
---   * @O(2)@ If payload field provided
-pile :: forall ma . (MonadIO ma, ma ~ R.Redis) => 
+--   * @O(1)@ if data exists in cache and expect value is 'Nothing'.
+--   
+--   * @O(2)@
+
+pile :: forall ma d . (MonadIO ma, ma ~ R.Redis, Binary d) => 
        B.ByteString
             -- ^ Prefix for key and tags.
     -> B.ByteString        
             -- ^ Key in cache. Key will be stored as @prefix:key@
-    -> Maybe (B.ByteString, B.ByteString)
-            -- ^ Optional expect field.
     -> Maybe B.ByteString
-            -- ^ Optional payload field. This reduces time complexity of 
-            --   request data from the cache from @O(N)@ to @O(1)@.
-            --   Regardless of setting this field, all data from computation
-            --   will stored in cache.
-    -> (forall mb . MonadIO mb => mb ([(B.ByteString, B.ByteString)], 
-           Maybe Integer, 
-           [B.ByteString]))
-            -- ^ Computation that returns data and 
-            --   optional TTL and tags. All tags will be stored as @prefix:tag@.
-    -> ma (Maybe [(B.ByteString, B.ByteString)])
-pile p key (Just (ef, ev)) payload f = do
-    e <- R.hget (p `B.append` ":" `B.append` key) ef
-    case e of
+            -- ^ Optional expect value. If it matches the value in the cache,
+            --   'pile' will return 'Nothing'. This is very useful when data in 
+            --   cache can be described with hash. For example, webpage ETag.
+    -> (forall mb . (MonadIO mb) => 
+            mb (d, B.ByteString, [B.ByteString], Maybe Integer))
+            -- ^ Computation that returns data, expect value, tags and 
+            --   optional TTL. 
+            --   All tags will be stored as @prefix:tag@.
+    -> ma (Maybe d)
+pile prx key (Just ev) fn = do
+    res <- R.hget (prx <> ":" <> key) "e"
+    case res of
         Right (Just ev') | ev' == ev -> return Nothing
-                         | otherwise -> pile p key Nothing payload f
-        _ -> pile p key Nothing payload f
-pile p key Nothing payload f = do
-    d <- fetchPayload payload
-    case d of
-        Nothing -> runF
-        Just r -> return $ Just r
+                         | otherwise -> pile prx key Nothing fn
+        _ -> pile prx key Nothing fn
+pile prx key Nothing fn = do 
+    res <- fetchPayload
+    case res of
+        Nothing -> runFn
+        Just res' -> return $ Just . fromJust . decode . cs $ res'  
   where
-    fetchPayload Nothing = do
-        v <- R.hgetall withPrefix
+    withPrefix = prx <> ":" <> key
+    fetchPayload = do
+        v <- R.hget withPrefix "d"
         return $ case v of 
-            Right [] -> Nothing
-            Right r -> Just r
+            Right (Just v') -> Just v'
             _ -> Nothing
-    fetchPayload (Just plf) = do
-        v <- R.hget withPrefix plf
-        return $ case v of 
-            Right (Just v') -> Just [(plf, v')]
-            _ -> Nothing
-    
-    withPrefix = p `B.append` ":" `B.append` key
-    runF = do
-        (r, ke, t) <- f
-        void $ R.hmset withPrefix r
-        setExpire ke
-        RT.markTags [withPrefix] p t
-        return $ case payload of
-            Nothing -> Just r
-            Just pl -> Just [(pl, fromJust $ lookup pl r)]
+    runFn = do
+        (dt, ev', ts, ttl) <- fn
+        let dt' = cs . encode $ dt
+        void $ R.hmset withPrefix [("e", ev'), ("d", dt')]
+        setExpire ttl
+        RT.markTags [withPrefix] prx ts
+        return $ Just dt
       where
         setExpire Nothing = return ()
         setExpire (Just ke) = void $ R.expire withPrefix ke
-        
+
+
+
+
+
+
+
+
