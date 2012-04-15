@@ -23,10 +23,11 @@ import Control.Monad (void)
 import qualified Data.ByteString as B
 import Data.Binary (Binary(..), encode, decode)
 import Data.String.Conversions ((<>), cs)
-import Data.Maybe (fromJust)
 
 import qualified Database.Redis as R
 import qualified Database.Redis.Tags as RT
+
+--import Control.Monad.IO.Class (liftIO)
 
 -- | Stores computation results in Redis. Computation fires only  
 --   if data absent in cache. Of course, to refresh the data, they must first 
@@ -45,7 +46,7 @@ import qualified Database.Redis.Tags as RT
 --   
 --   * @O(2)@
 
-pile :: forall ma d . (MonadIO ma, ma ~ R.Redis, Binary d) => 
+pile :: forall ma d . (MonadIO ma, ma ~ R.Redis, Binary d, Show d) => 
        B.ByteString
             -- ^ Prefix for key and tags.
     -> B.ByteString        
@@ -70,7 +71,7 @@ pile prx key Nothing fn = do
     res <- fetchPayload
     case res of
         Nothing -> runFn
-        Just res' -> return $ Just . fromJust . decode . cs $ res'  
+        Just res' -> return $ Just $ decode $ cs res'  
   where
     withPrefix = prx <> ":" <> key
     fetchPayload = do
