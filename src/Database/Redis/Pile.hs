@@ -40,11 +40,14 @@ import qualified Database.Redis.Tags as RT
 --
 --   Time complexity depends on the situation. 
 --   
---   * @O(1)@ if data exists in cache and expect matches. 
+--   * @O(1)@ data exists in cache, expect matches. 
 --   
---   * @O(1)@ if data exists in cache and expect value is 'Nothing'.
+--   * @O(1)@ data exists in cache, expect value is 'Nothing'.
 --   
---   * @O(2)@
+--   * @O(2)@ data exists in cache, but expect value not matches value 
+--     in cache.
+--   
+--   * In all other cases time complexity does not make sense
 
 pile :: forall ma d . (MonadIO ma, ma ~ R.Redis, Binary d, Show d) => 
        B.ByteString
