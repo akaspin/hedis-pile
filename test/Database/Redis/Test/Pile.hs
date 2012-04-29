@@ -10,6 +10,7 @@ import Test.HUnit (Assertion, (@=?))
 import Control.Monad (void)
 import Control.Monad.IO.Class (liftIO)
 import Control.Exception.Lifted (bracket_)
+import Control.Concurrent.Lifted (threadDelay)
 
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy as BL
@@ -23,11 +24,43 @@ import Data.Binary (encode, decode)
 
 tests :: Test
 tests = mutuallyExclusive $ testGroup "Pile" [
-    testCase "Binary test" caseBinary,
+    testCase "Expire" caseExpire,
+    testCase "Binary" caseBinary,
     testCase "Just Put & Get" casePutGet,
     testCase "Put and get without expect" caseWithoutTag,
     testCase "Put and get with expect" caseWithTag
     ]
+
+caseExpire :: Assertion
+caseExpire = bracket_
+    setup
+    teardown $ runInRedis $ do
+        -- test noexistent
+        noexistRes <- R.exists tName
+        liftIO $ Right False @=? noexistRes
+        
+        -- set test key and try to get
+        _ <- R.hset tName "payload" "*"
+        existRes <- R.exists tName
+        liftIO $ Right True @=? existRes
+        existsVal <- R.hget tName "payload"
+        liftIO $ Right (Just "*") @=? existsVal
+        
+        -- expire key. and wait
+        _ <- R.expire tName 1
+        liftIO $ threadDelay 1500000
+        
+        -- check existence
+        existRes' <- R.exists tName
+        liftIO $ Right False @=? existRes'
+        
+        -- try get
+        expiredRes <- R.hget tName "payload"
+        liftIO $ Right Nothing @=? expiredRes
+        
+  where
+    tName = testPrefix <> "existence"
+    
 
 -- | Binary checks
 caseBinary :: Assertion

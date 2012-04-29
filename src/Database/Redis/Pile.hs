@@ -29,7 +29,7 @@ import qualified Database.Redis.Tags as RT
 
 -- | Stores computation results in Redis. Computation fires only  
 --   if data absent in cache. Of course, to refresh the data, they must first 
---   remove from the cache.
+--   remove it from the cache.
 --   
 --   Computation controls everything except prefix and key.
 --
@@ -38,11 +38,11 @@ import qualified Database.Redis.Tags as RT
 --
 --   Time complexity depends on the situation. 
 --   
---   * @O(1)@ data exists in cache, expect matches. 
+--   * @O(2)@ data exists in cache, expect matches. 
 --   
---   * @O(1)@ data exists in cache, expect value is 'Nothing'.
+--   * @O(2)@ data exists in cache, expect value is 'Nothing'.
 --   
---   * @O(2)@ data exists in cache, but expect value not matches value 
+--   * @O(3)@ data exists in cache, but expect value not matches value 
 --     in cache.
 --   
 --   * In all other cases time complexity does not make sense
@@ -62,31 +62,46 @@ pile :: forall ma d . (MonadIO ma, ma ~ R.Redis, Binary d) =>
             --   optional TTL. 
             --   All tags will be stored as @prefix:tag@.
     -> ma (Maybe d)
-pile prx key (Just ev) fn = do
-    res <- R.hget (prx <> ":" <> key) "e"
+pile keyPrefix key (Just ev) fn = do
+    res <- R.hget (keyPrefix <> ":" <> key) "e"
     case res of
         Right (Just ev') | ev' == ev -> return Nothing
-                         | otherwise -> pile prx key Nothing fn
-        _ -> pile prx key Nothing fn
-pile prx key Nothing fn = do 
+                         | otherwise -> pile keyPrefix key Nothing fn
+        _ -> pile keyPrefix key Nothing fn
+pile keyPrefix key Nothing fn = do 
     res <- fetchPayload
     case res of
         Nothing -> runFn
         Just res' -> return . Just . decode . cs $ res'  
   where
-    withPrefix = prx <> ":" <> key
+    withPrefix = keyPrefix <> ":" <> key
     fetchPayload = do
         v <- R.hget withPrefix "d"
         return $ case v of 
             Right (Just v') -> Just v'
             _ -> Nothing
     runFn = do
-        (dt, ev', ts, ttl) <- fn
-        let dt' = cs . encode $ dt
-        void $ R.hmset withPrefix [("e", ev'), ("d", dt')]
-        setExpire ttl
-        RT.markTags [withPrefix] prx ts
-        return $ Just dt
+        -- run and encode data
+        (newData, newExpectValue, tags, ttl) <- fn
+        let encodedData = cs . encode $ newData
+        
+        -- Try to get data. 
+        maybeInCache <- R.hget withPrefix "d"
+        case maybeInCache of
+            Right Nothing -> do
+                -- no data in cache. store and return
+                void $ R.hmset withPrefix 
+                    [("e", newExpectValue), ("d", encodedData)]
+                setExpire ttl
+                RT.markTags [withPrefix] keyPrefix tags
+                return $ Just newData
+            Right (Just cachedData) -> 
+                -- data in cache. dont set. just return
+                return . Just . decode . cs $ cachedData
+            _ -> 
+                -- some troubles. just return
+                return $ Just newData
+        
       where
         setExpire Nothing = return ()
         setExpire (Just ke) = void $ R.expire withPrefix ke
