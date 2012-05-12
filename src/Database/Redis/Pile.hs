@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE TypeFamilies, FlexibleContexts #-}
 
 -- | Solution for caching mandatory data with Redis.
 --   
@@ -18,7 +18,6 @@ module Database.Redis.Pile (
 ) where
 
 import Control.Monad.IO.Class (MonadIO)
-import Control.Monad (void)
 
 import qualified Data.ByteString as B
 import Data.Binary (Binary(..), encode, decode)
@@ -47,7 +46,7 @@ import qualified Database.Redis.Tags as RT
 --   
 --   * In all other cases time complexity does not make sense
 
-pile :: forall ma d . (MonadIO ma, ma ~ R.Redis, Binary d) => 
+pile :: forall ma d t . (MonadIO ma,  R.RedisCtx ma (Either t), Binary d) => 
        B.ByteString
             -- ^ Prefix for key and tags.
     -> B.ByteString        
@@ -90,7 +89,7 @@ pile keyPrefix key Nothing fn = do
         case maybeInCache of
             Right Nothing -> do
                 -- no data in cache. store and return
-                void $ R.hmset withPrefix 
+                _ <- R.hmset withPrefix 
                     [("e", newExpectValue), ("d", encodedData)]
                 setExpire ttl
                 RT.markTags [withPrefix] keyPrefix tags
@@ -104,7 +103,9 @@ pile keyPrefix key Nothing fn = do
         
       where
         setExpire Nothing = return ()
-        setExpire (Just ke) = void $ R.expire withPrefix ke
+        setExpire (Just ke) = do
+            _ <- R.expire withPrefix ke
+            return ()
 
 
 
