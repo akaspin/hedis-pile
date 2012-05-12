@@ -56,9 +56,9 @@ pile :: forall ma d t . (MonadIO ma,  R.RedisCtx ma (Either t), Binary d) =>
             --   'pile' will return 'Nothing'. This is very useful when data in 
             --   cache can be described with hash. For example, webpage ETag.
     -> (forall mb . (MonadIO mb) => 
-            mb (d, B.ByteString, [B.ByteString], Maybe Integer))
+            mb (d, B.ByteString, [B.ByteString], Integer))
             -- ^ Computation that returns data, expect value, tags and 
-            --   optional TTL. 
+            --   optional TTL (set it to zero for no expiration). 
             --   All tags will be stored as @prefix:tag@.
     -> ma (Maybe d)
 pile keyPrefix key (Just ev) fn = do
@@ -102,8 +102,8 @@ pile keyPrefix key Nothing fn = do
                 return $ Just newData
         
       where
-        setExpire Nothing = return ()
-        setExpire (Just ke) = do
+        setExpire 0 = return ()
+        setExpire ke = do
             _ <- R.expire withPrefix ke
             return ()
 

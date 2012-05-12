@@ -76,7 +76,7 @@ casePutGet = bracket_
     setup
     teardown $ runInRedis $ do
         r <- RP.pile testPrefix (toBs 1) Nothing $ 
-                return (testData 1, "exp", [], Nothing)
+                return (testData 1, "exp", [], 0)
         liftIO $ r @=? Just (testData 1)
 
 -- | Work without tag
@@ -85,9 +85,9 @@ caseWithoutTag = bracket_
     setup
     teardown $ runInRedis $ do
         r1 <- RP.pile testPrefix (toBs 1) Nothing $ 
-                return (testData 1, "exp", [], Nothing)
+                return (testData 1, "exp", [], 0)
         (r2 :: Maybe TData) <- RP.pile testPrefix (toBs 1) Nothing $ 
-                return (testData 1, "exp", [], Nothing)
+                return (testData 1, "exp", [], 0)
         liftIO $ r1 @=? r2
 
 -- | Work with tag
@@ -97,14 +97,14 @@ caseWithTag = bracket_
     teardown $ runInRedis $ do
         -- prepend data
         _ <- RP.pile testPrefix (toBs 1) (Just "exp") $ 
-                return (testData 1, "exp", [], Nothing)
+                return (testData 1, "exp", [], 0)
         -- retrieve with matching expect
         r2 <- RP.pile testPrefix (toBs 1) (Just "exp") $ 
-                return (testData 1, "exp", [], Nothing)
+                return (testData 1, "exp", [], 0)
         liftIO $ r2 @=? Nothing
         -- retrieve with unmatching expect
         r3 <- RP.pile testPrefix (toBs 1) (Just "exp_no_match") $ 
-                return (testData 1, "exp", [], Nothing)
+                return (testData 1, "exp", [], 0)
         liftIO $ r3 @=? Just (testData 1)
 
 -- | Run in redis
